@@ -1,0 +1,1372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<title>the vibe curator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;1,9..144,300&family=Inter:wght@400&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --sumi:#24211D; --kinari:#E5DCC8; --nibi:#6B6F6A;
+    --wabicha:#7C6A4A; --haizakura:#A98F86; --yanagi:#7C8567;
+    --gunjo:#E8C547; --kohaku:#C9722B;
+    --tilt-x:0; --tilt-y:0; --amp:1;
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{
+    margin:0; width:100%; height:100vh; height:100dvh; overflow:hidden;
+    background:var(--sumi); font-family:'Inter',sans-serif;
+    touch-action:pan-y; -webkit-user-select:none; user-select:none;
+  }
+  .stage{ position:relative; width:100vw; height:100vh; height:100dvh; overflow:hidden; }
+
+  .tod{ position:absolute; inset:0; opacity:0; transition:opacity 6s ease; }
+  .tod.night{ background:radial-gradient(ellipse at 30% 20%, #2a2620 0%, #100e0b 70%); }
+  .tod.dawn { background:radial-gradient(ellipse at 30% 20%, #3a3128 0%, #17130f 70%); }
+  .tod.day  { background:radial-gradient(ellipse at 30% 20%, #3f382c 0%, #1c1913 70%); }
+  .tod.dusk { background:radial-gradient(ellipse at 30% 20%, #362a22 0%, #150f0b 70%); }
+
+  .wash{
+    position:absolute; inset:-25%;
+    background:
+      radial-gradient(circle at calc(75% + var(--tilt-y)*12%) calc(25% + var(--tilt-x)*10%), rgba(124,106,74,.16), transparent 46%),
+      radial-gradient(circle at calc(20% - var(--tilt-y)*10%) calc(85% - var(--tilt-x)*8%), rgba(107,111,106,.18), transparent 52%);
+    filter:hue-rotate(calc(var(--tilt-x)*-6deg));
+    opacity:0;
+    animation:breathe 11s ease-in-out infinite, fade-in 1.2s ease forwards;
+    animation-duration:calc(11s / var(--amp)), 1.2s;
+  }
+  @keyframes fade-in{ from{opacity:0;} to{opacity:.6;} }
+  @keyframes breathe{ 0%,100%{transform:scale(1);} 50%{transform:scale(1.06);} }
+
+  .grain{
+    position:absolute; inset:0; pointer-events:none; mix-blend-mode:overlay;
+    background-image:repeating-linear-gradient(115deg, rgba(255,255,255,.014) 0 1px, transparent 1px 3px);
+  }
+
+  /* 月：満ち欠け(端末曲線をSVGパスで直接描画)。朧月に寄せて輪郭を柔らかく滲ませる。
+     位置は左辺(新月)→中央上部(満月)→右辺(新月)と弧を描いて動く。JSがleft/topを毎フレーム設定する。 */
+  .moon-svg{
+    position:absolute; width:76px; height:76px; opacity:.5; z-index:2; pointer-events:none;
+    transform:translate(-50%,-50%);
+  }
+  #moonLit{ fill:var(--kinari); filter:url(#moonBlur); }
+
+  .canvas{ position:absolute; inset:0; z-index:3; pointer-events:none; overflow:visible; }
+  .strand{ fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ring{ fill:none; vector-effect:non-scaling-stroke; transform-origin:0 0; }
+  .frost{ animation:frost-twinkle 5.5s ease-in-out infinite; }
+  .zodiac-star{
+    fill:var(--kinari);
+    animation:star-twinkle var(--dur) ease-in-out infinite;
+    animation-delay:var(--delay);
+  }
+  @keyframes star-twinkle{
+    0%,100%{ opacity:calc(var(--peak) * 0.16); }
+    50%    { opacity:calc(var(--peak) * 0.85); }
+  }
+  @keyframes frost-twinkle{ 0%,100%{ opacity:.15; } 50%{ opacity:.55; } }
+
+  .wordmark{
+    position:absolute; left:8vw; right:8vw; top:38vh;
+    transform:translateY(-100%); z-index:5; pointer-events:none;
+    opacity:0; animation:text-in 900ms 300ms ease-out forwards;
+  }
+  @keyframes text-in{ from{opacity:0; transform:translateY(-92%);} to{opacity:1; transform:translateY(-100%);} }
+
+  /* 深呼吸：不透明度・グロー・スケール・色をすべてJSで同じ位相から駆動する(下のスクリプト参照)。
+     色の切り替えは、明るさが最も落ちる"谷"の瞬間に起きるので、次の"峰"では
+     すでに新しい色に落ち着いている＝明滅と変色のタイミングが揃う。 */
+
+  .the{
+    display:block; font-family:'Fraunces',serif; font-optical-sizing:auto;
+    font-style:italic; font-weight:300;
+    font-size:clamp(13px,4.2vw,24px); letter-spacing:.01em;
+    position:relative; top:2px; margin:0 0 2px 2px;
+    transition:color 650ms ease;
+  }
+  .vibe{
+    margin:0; font-family:'Fraunces',serif; font-optical-sizing:auto; font-weight:400;
+    font-size:clamp(34px,11vw,68px); letter-spacing:-.012em; line-height:1.02;
+    white-space:nowrap; position:relative; transform-origin:left center;
+    transition:color 650ms ease;
+    pointer-events:auto; cursor:pointer;   /* タップして波紋を起こせるように */
+  }
+  .vibe .ch{ display:inline-block; transition:color 260ms ease; }
+  .vibe .kp{ margin-left:-.018em; }
+  .vibe .tall-t{ display:inline-block; transform:scaleY(1.03) translateY(-1%); transform-origin:bottom; }
+  .wordmark.tilt-iri .vibe .iri{
+    background:linear-gradient(120deg,var(--kinari) 35%,var(--gunjo) 48%,var(--kohaku) 58%,var(--kinari) 70%);
+    background-size:280% 100%; -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .name{
+    display:block; margin-top:16px; font-family:'Inter',sans-serif; font-weight:400;
+    font-size:clamp(9px,2.6vw,13px); letter-spacing:.34em; text-transform:lowercase;
+    transition:color 650ms ease;
+  }
+
+  .ambient{ position:absolute; z-index:4; pointer-events:none; will-change:transform,opacity; }
+  .ambient.firefly{ width:3px; height:3px; border-radius:50%; background:var(--kinari); box-shadow:0 0 7px 2px rgba(229,220,200,.45); }
+  .ambient.snow{ width:3px; height:3px; border-radius:50%; background:#E9E4D6; box-shadow:0 0 4px 1px rgba(233,228,214,.5); }
+  .ambient.petal{ width:6px; height:5px; background:#E3C3CC; border-radius:60% 40% 55% 45%/58% 46% 60% 40%; }
+  .ambient.leaf{ width:6px; height:6px; background:#B5583F; border-radius:0 55% 0 55%; }
+
+  .drop{ position:absolute; width:3px; height:8px; border-radius:50% 50% 50% 50%/60% 60% 40% 40%; background:var(--kinari); opacity:.7; z-index:4; pointer-events:none; animation:drop-fall linear forwards; }
+  @keyframes drop-fall{ to{ transform:translateY(var(--fall)); opacity:.9; } }
+  .glint{ position:absolute; width:2.6px; height:2.6px; border-radius:50%; opacity:0; pointer-events:none; z-index:4; animation:glint-life 1800ms ease-out forwards; }
+  @keyframes glint-life{ 0%{ opacity:0; transform:scale(.4); } 14%{ opacity:.8; transform:scale(1); } 100%{ opacity:0; transform:scale(.6); } }
+  .thunder{ position:absolute; inset:0; background:var(--gunjo); opacity:0; z-index:6; pointer-events:none; animation:thunder-flash 700ms ease-out forwards; }
+  @keyframes thunder-flash{ 0%{opacity:0;} 10%{opacity:.28;} 30%{opacity:0;} 100%{opacity:0;} }
+
+  .stage.haze .wash{ filter:blur(.4px) hue-rotate(calc(var(--tilt-x)*-6deg)); }
+  .stage.still{ --amp:.7; }
+
+  @media (prefers-reduced-motion:reduce){
+    .wash,.vibe,.the,.name{ animation:none !important; transition:none !important; color:#E5DCC8; }
+    .the{ color:#A98F86; } .name{ color:#8D8677; }
+    .frost{ animation:none !important; opacity:.3; }
+    .zodiac-star{ animation:none !important; opacity:calc(var(--peak) * 0.55); }
+  }
+</style>
+</head>
+<body>
+
+<div class="stage" id="stage">
+  <div class="tod night" id="tod-night"></div>
+  <div class="tod dawn"  id="tod-dawn"></div>
+  <div class="tod day"   id="tod-day"></div>
+  <div class="tod dusk"  id="tod-dusk"></div>
+
+  <div class="wash"></div>
+  <div class="grain"></div>
+
+  <svg class="moon-svg" viewBox="-38 -38 76 76" aria-hidden="true">
+    <defs>
+      <filter id="moonBlur" x="-80%" y="-80%" width="260%" height="260%">
+        <feGaussianBlur stdDeviation="1.7"></feGaussianBlur>
+      </filter>
+    </defs>
+    <path id="moonLit" d=""></path>
+  </svg>
+
+  <svg class="canvas" id="canvas" aria-hidden="true">
+    <g id="zodiac"></g>
+    <g id="flora"></g>
+    <g id="willow"></g>
+    <g id="ripples"></g>
+  </svg>
+
+  <div id="fxLayer" aria-hidden="true"></div>
+
+  <div class="wordmark" id="wordmark" tabindex="0" aria-label="the vibe curator — satoru nomoto">
+    <span class="the">the</span>
+    <h1 class="vibe" id="vibeText"><span class="ch">v</span><span class="ch">i</span><span class="ch kp">b</span><span class="ch kp iri">e</span>&nbsp;<span class="ch">c</span><span class="ch">u</span><span class="ch kp iri">r</span><span class="ch kp">a</span><span class="ch tall-t">t</span><span class="ch kp">o</span><span class="ch">r</span></h1>
+    <span class="name">satoru nomoto</span>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+const SVGNS='http://www.w3.org/2000/svg';
+const stage=document.getElementById('stage');
+const wordmark=document.getElementById('wordmark');
+const canvas=document.getElementById('canvas');
+const gWillow=document.getElementById('willow');
+const gRipple=document.getElementById('ripples');
+const gFlora=document.getElementById('flora');
+const gZodiac=document.getElementById('zodiac');
+const fxLayer=document.getElementById('fxLayer');
+const moonLit=document.getElementById('moonLit');
+const moonSvg=document.querySelector('.moon-svg');
+let elVibe=document.querySelector('.vibe'), elThe=document.querySelector('.the'), elName=document.querySelector('.name');
+const reduced=window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+
+let W=window.innerWidth, H=window.innerHeight;
+function sizeCanvas(){
+  W=window.innerWidth; H=window.innerHeight;
+  canvas.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  canvas.setAttribute('width',W);
+  canvas.setAttribute('height',H);
+}
+sizeCanvas();
+
+/* ============ 音：外部ファイルを使わず、その場で合成する。派手さより間と余韻を重ねる ============ */
+let actx=null, masterGain=null, reverbSend=null;
+function makeImpulse(ctx, seconds, decay){
+  const rate=ctx.sampleRate, len=Math.floor(rate*seconds);
+  const buf=ctx.createBuffer(2, len, rate);
+  for(let ch=0; ch<2; ch++){
+    const data=buf.getChannelData(ch);
+    for(let i=0;i<len;i++) data[i]=(Math.random()*2-1)*Math.pow(1-i/len, decay);
+  }
+  return buf;
+}
+function ensureAudio(){
+  if(actx) return;
+  try{
+    actx=new (window.AudioContext||window.webkitAudioContext)();
+    masterGain=actx.createGain();
+    masterGain.gain.value=0.15;              // 全体をかなり控えめに
+    masterGain.connect(actx.destination);
+    const reverb=actx.createConvolver();
+    reverb.buffer=makeImpulse(actx, 2.4, 3.0);   // 静かな間を持つ、ごく淡い残響
+    reverbSend=actx.createGain();
+    reverbSend.gain.value=0.5;
+    reverbSend.connect(reverb);
+    reverb.connect(masterGain);
+  }catch(_){ actx=null; }
+}
+/* 波紋の音：クリスタルボウルの低めの音階から、その都度違う和音を鳴らす。
+   一音ではなく2〜3音を組み合わせ、それぞれをわずかにデチューンした二重の正弦波にして
+   クリスタルボウル特有のうなり(ビート)を作る。タップごとに次の和音へ移る。 */
+const BOWL_SCALE=[130.81,146.83,174.61,196.00,220.00]; // C3・D3・F3・G3・A3 の低めの五音音階
+const BOWL_CHORDS=[[0,2,3],[1,3,4],[0,3],[2,4],[0,2,4],[1,2,3],[0,1,3]];
+let bowlChordIdx=Math.floor(Math.random()*BOWL_CHORDS.length);
+function playBowlChord(){
+  if(!actx) return;
+  if(actx.state==='suspended') actx.resume();
+  bowlChordIdx=(bowlChordIdx+1)%BOWL_CHORDS.length;
+  const chord=BOWL_CHORDS[bowlChordIdx];
+  const t0=actx.currentTime;
+  chord.forEach((idx,voiceI)=>{
+    const freq=BOWL_SCALE[idx]*(0.997+Math.random()*0.006);
+    const start=t0+voiceI*0.03+Math.random()*0.02;
+    [1, 1.0025].forEach((detune,k)=>{
+      const osc=actx.createOscillator();
+      const g=actx.createGain();
+      osc.type='sine';
+      osc.frequency.setValueAtTime(freq*detune, start);
+      const amp=(k===0?0.16:0.09)/Math.sqrt(chord.length);
+      g.gain.setValueAtTime(0.0001, start);
+      g.gain.linearRampToValueAtTime(amp, start+0.35);     // クリスタルボウルらしい、ゆっくりした立ち上がり
+      g.gain.exponentialRampToValueAtTime(0.0001, start+3.4);
+      osc.connect(g); g.connect(masterGain); g.connect(reverbSend);
+      osc.start(start); osc.stop(start+3.6);
+    });
+  });
+}
+
+/* ============ 文字の色：明滅のたびに色そのものを変える ============ */
+const WORD_PALETTES=[
+  {main:'#F5EEDC', sub:'#C7BAA6', name:'#B0A48F'},   // 生成り
+  {main:'#EAD0D6', sub:'#C79AA6', name:'#A98F97'},   // 桜
+  {main:'#F0C878', sub:'#C9722B', name:'#9A6A45'},   // 琥珀
+  {main:'#D9E0C8', sub:'#8E9A6E', name:'#6E7A54'},   // 若草
+  {main:'#F2E6A8', sub:'#E8C547', name:'#B89A3E'},   // 黄(アクセント)
+  {main:'#DCCEDE', sub:'#9A7BA8', name:'#7A6088'}    // 菫
+];
+let wordPaletteIdx=Math.floor(Math.random()*WORD_PALETTES.length);
+function cycleWordColor(){
+  wordPaletteIdx=(wordPaletteIdx+1)%WORD_PALETTES.length;
+  const p=WORD_PALETTES[wordPaletteIdx];
+  if(elVibe) elVibe.style.color=p.main;
+  if(elThe)  elThe.style.color=p.sub;
+  if(elName) elName.style.color=p.name;
+}
+cycleWordColor();
+
+/* 明滅(不透明度・グロー・スケール)と変色を、同じ位相クロックで駆動する。
+   位相が谷(0)を通過した瞬間に色を切り替えるので、次の峰では
+   すでに新しい色に落ち着いている＝明滅と変色のタイミングが揃う。 */
+const breathT0=performance.now();
+let lastBreathPhase=0;
+function updateWordBreath(now){
+  const amp = stage.classList.contains('still') ? 0.7 : 1;
+  const period = 10000/amp;
+  const phase = ((now-breathT0) % period) / period;
+  const bell = (1-Math.cos(2*Math.PI*phase))/2;   // 0=谷 1=峰
+
+  if(elVibe){
+    elVibe.style.opacity=(0.55+0.45*bell).toFixed(3);
+    elVibe.style.transform=`scale(${(0.988+0.024*bell).toFixed(4)})`;
+    elVibe.style.textShadow=`0 0 ${(26*bell).toFixed(1)}px rgba(229,220,200,${(0.32*bell).toFixed(3)})`;
+  }
+  if(elThe)  elThe.style.opacity=(0.5+0.5*bell).toFixed(3);
+  if(elName) elName.style.opacity=(0.48+0.52*bell).toFixed(3);
+
+  if(phase<lastBreathPhase) cycleWordColor();     // 谷を通過した瞬間だけ、色を切り替える
+  lastBreathPhase=phase;
+}
+
+/* ============ 星座：表示日時に合った一つだけを、線で結ばず点の煌めきとして ============ */
+/* 座標は 0-100(横)×0-60(縦) の簡略化した相対配置。線は引かない。
+   星の数は、一般的な星座早見図・プラネタリウムで使われる標準的な簡略形の
+   結び目の数に合わせている(Wikipediaの天文カタログ上の「Main stars」とは
+   別物。あちらはプレアデス星団の構成星まで数えるなど、認識しやすい形の
+   星数とは一致しないため使わない)。 */
+const ZODIAC_STARS={
+  aries:[[8,42,0.5],[12,44,0.5],[30,20,0.9],[45,12,1.0],[62,6,0.6]],
+  taurus:[
+    [30,10,0.5],[38,8,0.5],[42,12,0.5],[36,14,0.5],[40,16,0.4],   // プレアデス(小さな塊)
+    [55,15,0.9],[45,28,1.0],[35,35,0.6],[25,45,0.5],[15,25,0.7]
+  ],
+  gemini:[[20,8,0.9],[45,8,1.0],[18,22,0.5],[43,22,0.5],[16,36,0.5],[41,36,0.5],[20,50,0.6],[45,50,0.6]],
+  cancer:[[35,8,0.6],[35,25,0.5],[20,35,0.4],[50,35,0.4],[35,52,0.5]],
+  leo:[[10,42,0.6],[15,28,0.7],[22,16,0.8],[32,8,1.0],[42,10,0.6],[38,20,0.6],[60,25,0.7],[72,30,0.5]],
+  virgo:[[45,8,0.6],[30,18,0.5],[58,18,0.5],[40,28,0.5],[50,30,0.5],[45,40,0.6],[35,50,0.5],[48,58,1.0]],
+  libra:[[25,18,0.7],[50,12,0.8],[55,32,0.6],[38,40,0.6],[20,35,0.4]],
+  scorpio:[
+    [8,10,0.6],[16,8,0.6],[24,14,0.5],
+    [28,22,0.5],[32,30,0.5],[36,38,0.5],
+    [42,46,0.6],[50,50,0.6],[58,48,0.7],[64,40,0.9]
+  ],
+  sagittarius:[[15,25,0.6],[10,36,0.5],[20,42,0.6],[34,42,0.6],[46,36,0.6],[48,24,0.6],[36,14,0.7],[24,16,0.9]],
+  capricorn:[[10,18,0.6],[16,32,0.5],[30,44,0.5],[48,42,0.6],[60,26,0.6],[46,10,0.9]],
+  aquarius:[[15,10,0.6],[24,20,0.6],[20,32,0.5],[32,36,0.5],[42,26,0.7],[52,32,0.9],[46,46,0.5]],
+  pisces:[
+    [10,14,0.6],[16,10,0.6],[20,17,0.6],[14,22,0.5],[7,19,0.5],
+    [30,26,0.4],[42,34,0.4],[54,42,0.4],
+    [64,46,0.6]
+  ]
+};
+function currentZodiac(d){
+  const md=(d.getMonth()+1)*100+d.getDate();
+  if(md>=321 && md<=419) return 'aries';
+  if(md>=420 && md<=520) return 'taurus';
+  if(md>=521 && md<=620) return 'gemini';
+  if(md>=621 && md<=722) return 'cancer';
+  if(md>=723 && md<=822) return 'leo';
+  if(md>=823 && md<=922) return 'virgo';
+  if(md>=923 && md<=1022) return 'libra';
+  if(md>=1023 && md<=1121) return 'scorpio';
+  if(md>=1122 && md<=1221) return 'sagittarius';
+  if(md>=1222 || md<=119) return 'capricorn';
+  if(md>=120 && md<=218) return 'aquarius';
+  return 'pisces'; // 219-320
+}
+function buildZodiac(){
+  gZodiac.innerHTML='';
+  const sign=currentZodiac(new Date());
+  const stars=ZODIAC_STARS[sign];
+  const x0=W*0.62, x1=W*0.93;      // 画面右上三分の一の領域に収める
+  const y0=H*0.05, y1=H*0.23;
+  for(const [nx,ny,peak] of stars){
+    const sx=x0+(nx/100)*(x1-x0);
+    const sy=y0+(ny/60)*(y1-y0);
+    const c=document.createElementNS(SVGNS,'circle');
+    c.setAttribute('class','zodiac-star');
+    c.setAttribute('cx',sx.toFixed(1)); c.setAttribute('cy',sy.toFixed(1));
+    c.setAttribute('r',(0.9+peak*1.1).toFixed(2));
+    c.style.setProperty('--peak', peak);
+    c.style.setProperty('--dur', (3.2+Math.random()*3).toFixed(2)+'s');
+    c.style.setProperty('--delay', (-Math.random()*6).toFixed(2)+'s');
+    gZodiac.appendChild(c);
+  }
+}
+
+function currentSeason(d){
+  const m=d.getMonth()+1;
+  if(m>=3&&m<=5) return 'spring';
+  if(m>=6&&m<=8) return 'summer';
+  if(m>=9&&m<=11) return 'autumn';
+  return 'winter';
+}
+function willowPalette(season){
+  if(season==='spring') return {colors:['#D9AEB8','#E8C9D2','#C79AA6','#F0DCE0','#DCB7C0'], blossom:true,  bare:false};
+  if(season==='autumn') return {colors:['#B5533C','#C9722B','#9A6A72','#8A5A3E','#6E4A32'], blossom:false, bare:false};
+  if(season==='winter') return {colors:['#9CA39C','#B4B0A2','#7E8480','#C4C0B2','#8B8F86'], blossom:false, bare:true };
+  return                        {colors:['#5F7355','#6B7A52','#4F6B48','#7C8567','#4A5F42'], blossom:false, bare:false}; // 夏：深緑
+}
+
+/* ============ 枝垂れ柳：17本・伝播する波でしなる ============ */
+const N_STRANDS=17;
+const SEGS=20;
+const strands=[];
+function buildWillow(){
+  gWillow.innerHTML='';
+  strands.length=0;
+  const season=currentSeason(new Date());
+  const pal=willowPalette(season);
+  for(let i=0;i<N_STRANDS;i++){
+    const t=i/(N_STRANDS-1);
+    const x0 = W*(0.012 + Math.pow(t,1.75)*0.30) + (Math.random()-0.5)*6;
+    const len = H*(0.34 + Math.random()*0.52);
+    const path=document.createElementNS(SVGNS,'path');
+    path.setAttribute('class','strand');
+    path.setAttribute('stroke', pal.colors[i%pal.colors.length]);
+    path.setAttribute('stroke-width', (pal.bare?0.32:0.4)+Math.random()*0.4);
+    path.setAttribute('opacity', (pal.bare?0.22:0.28)+Math.random()*0.3);
+    gWillow.appendChild(path);
+
+    const ys=new Array(SEGS+1);
+    for(let j=0;j<=SEGS;j++) ys[j] = -6 + len*(j/SEGS);
+
+    const decor=[];
+    if(pal.blossom && i%2===0){
+      const nb=1+Math.floor(Math.random()*2);
+      for(let b=0;b<nb;b++){
+        const c=document.createElementNS(SVGNS,'circle');
+        c.setAttribute('r',(1+Math.random()*0.9).toFixed(2));
+        c.setAttribute('fill', Math.random()<0.5?'#F3D9DF':'#E8C9D2');
+        c.setAttribute('opacity',(0.35+Math.random()*0.3).toFixed(2));
+        gWillow.appendChild(c);
+        decor.push({el:c, u:0.32+Math.random()*0.46});
+      }
+    }
+    if(pal.bare && i%3===0){
+      const c=document.createElementNS(SVGNS,'circle');
+      c.setAttribute('r','1.1');
+      c.setAttribute('fill','#E9E4D6');
+      c.setAttribute('class','frost');
+      gWillow.appendChild(c);
+      decor.push({el:c, u:0.94});
+    }
+
+    strands.push({
+      el:path, x0, len, ys,
+      xs:new Array(SEGS+1).fill(x0),
+      f1:0.09+Math.random()*0.12, p1:Math.random()*6.28, a1:3+Math.random()*6,
+      f2:0.22+Math.random()*0.26, p2:Math.random()*6.28, a2:1.6+Math.random()*3,
+      f3:0.55+Math.random()*0.6,  p3:Math.random()*6.28, a3:0.5+Math.random()*1.2,
+      drift:(Math.random()-0.5)*3.4,
+      events:[],
+      decor
+    });
+  }
+}
+buildWillow();
+buildZodiac();
+
+/* 伝播する波：触れた地点から時間差で伝わる。打ち切らずに減衰振動として何度も弾み、
+   ダイナミックに揺れてから、自然にゼロへ収束する(実際に弾かれた紐やバネの動きに近い)。 */
+function touchContribution(ev, i, tNow){
+  const dt = tNow - ev.t0;
+  if(dt<0) return 0;
+  const distIdx = i - ev.origin;
+  const distU = distIdx/SEGS;
+  const speed = 0.62;
+  const travel = Math.abs(distU)/speed;
+  const localT = dt - travel;
+  if(localT<0) return 0;
+  const rootDamp = distIdx<0 ? 1.9 : 1.05;
+  const decay = Math.exp(-localT*0.95) * Math.exp(-Math.abs(distU)*rootDamp*0.85);
+  if(decay<0.006) return 0;
+  const attack = Math.min(1, localT/0.06);      // 素早く立ち上がる(反応がはっきり分かる)
+  const wave = Math.sin(localT*5.6);             // 弾むように何度も揺れて、長めに余韻が残る
+  return ev.strength * wave * decay * attack;
+}
+
+function updateWillow(nowMs){
+  const t=nowMs/1000;
+  for(const s of strands){
+    if(s.events.length){
+      s.events = s.events.filter(ev => (t-ev.t0) < 2.2);
+      if(s.events.length>5) s.events.splice(0, s.events.length-5);
+    }
+    s.xs[0]=s.x0;
+    for(let j=1;j<=SEGS;j++){
+      const u=j/SEGS;
+      const ambient =
+          s.a1*Math.sin(t*s.f1+s.p1+u*1.7)*Math.pow(u,1.05) +
+          s.a2*Math.sin(t*s.f2+s.p2+u*3.4)*Math.pow(u,1.25) +
+          s.a3*Math.sin(t*s.f3+s.p3+u*6.5)*(0.15+Math.pow(u,0.55))*0.5;
+      let touch=0;
+      for(let k=0;k<s.events.length;k++) touch += touchContribution(s.events[k], j, t);
+      s.xs[j] = s.x0 + s.drift*Math.pow(u,1.1) + ambient + touch;
+    }
+    // 滑らかな二次ベジェで「髪の毛」らしい連続曲線に
+    let d = `M${s.xs[0].toFixed(2)},${s.ys[0].toFixed(2)} `;
+    for(let j=1;j<SEGS;j++){
+      const mx=(s.xs[j]+s.xs[j+1])/2, my=(s.ys[j]+s.ys[j+1])/2;
+      d += `Q${s.xs[j].toFixed(2)},${s.ys[j].toFixed(2)} ${mx.toFixed(2)},${my.toFixed(2)} `;
+    }
+    d += `L${s.xs[SEGS].toFixed(2)},${s.ys[SEGS].toFixed(2)}`;
+    s.el.setAttribute('d', d);
+
+    for(const dec of s.decor){
+      const idx=Math.round(dec.u*SEGS);
+      dec.el.setAttribute('cx', s.xs[idx].toFixed(2));
+      dec.el.setAttribute('cy', s.ys[idx].toFixed(2));
+    }
+  }
+}
+
+/* 実際に触れている柳(いちばん近い一本)だけが反応する。触れていない柳は動かさない。
+   ダイナミックに弾んで見えるよう、反応の強さそのものは十分に効かせている。 */
+let lastTouchPush=0;
+function touchWillow(px,py,strength,now){
+  now = now || performance.now();
+  if(now-lastTouchPush < 55) return;
+  lastTouchPush = now;
+  const tSec = now/1000;
+  const HIT_RADIUS = 42; // 実際に触れたと判定する範囲(指先程度)
+  let bestStrand=null, bestIdx=-1, bestDist=1e9;
+  for(const s of strands){
+    for(let j=1;j<=SEGS;j++){
+      const dy=Math.abs(s.ys[j]-py);
+      if(dy>HIT_RADIUS) continue;
+      const dx=Math.abs(s.xs[j]-px);
+      const dist=Math.hypot(dx,dy);
+      if(dist<bestDist){ bestDist=dist; bestStrand=s; bestIdx=j; }
+    }
+  }
+  if(!bestStrand || bestDist>HIT_RADIUS) return;
+  const falloff = 1-bestDist/HIT_RADIUS;
+  bestStrand.events.push({ origin:bestIdx, t0:tSec, strength: strength*falloff });
+  if(bestStrand.events.length>5) bestStrand.events.shift();
+}
+
+/* ============ 季節の草花（地面際・時計から判定） ============ */
+const SEASON_SPEC={
+  spring:{ stem:'#6E7A54', bloom:'#8E7BA8', accent:'#C0A7C4', count:9,  petals:5, size:2.6, hArr:[0.10,0.17] },
+  summer:{ stem:'#5F7355', bloom:'#4A6FC4', accent:'#7E9BD8', count:8,  petals:3, size:3.0, hArr:[0.12,0.20] },
+  autumn:{ stem:'#7C6A4A', bloom:'#9A6A72', accent:'#C9A08A', count:11, petals:5, size:2.2, hArr:[0.14,0.24] },
+  winter:{ stem:'#6B6F6A', bloom:'#D9D2C0', accent:'#EFE7D6', count:6,  petals:6, size:2.4, hArr:[0.08,0.14] }
+};
+const floraItems=[];
+function buildFlora(){
+  gFlora.innerHTML='';
+  floraItems.length=0;
+  const spec=SEASON_SPEC[currentSeason(new Date())];
+  const baseY=H-6;
+  for(let i=0;i<spec.count;i++){
+    const x=W*(0.18+Math.random()*0.78);
+    const h=H*(spec.hArr[0]+Math.random()*(spec.hArr[1]-spec.hArr[0]));
+    const lean=(Math.random()-0.5)*16;
+    const g=document.createElementNS(SVGNS,'g');
+    g.setAttribute('opacity',(0.3+Math.random()*0.3).toFixed(2));
+    const stem=document.createElementNS(SVGNS,'path');
+    stem.setAttribute('fill','none'); stem.setAttribute('stroke',spec.stem);
+    stem.setAttribute('stroke-width',(0.55+Math.random()*0.4).toFixed(2));
+    stem.setAttribute('stroke-linecap','round');
+    g.appendChild(stem);
+    const nLeaf=1+Math.floor(Math.random()*2), leaves=[];
+    for(let k=0;k<nLeaf;k++){
+      const lf=document.createElementNS(SVGNS,'path');
+      lf.setAttribute('fill','none'); lf.setAttribute('stroke',spec.stem);
+      lf.setAttribute('stroke-width','0.5'); lf.setAttribute('stroke-linecap','round'); lf.setAttribute('opacity','0.75');
+      g.appendChild(lf);
+      leaves.push({el:lf, at:0.35+Math.random()*0.4, dir:Math.random()<0.5?-1:1, len:5+Math.random()*7});
+    }
+    const bloom=document.createElementNS(SVGNS,'g');
+    for(let p=0;p<spec.petals;p++){
+      const pet=document.createElementNS(SVGNS,'ellipse');
+      const ang=(p/spec.petals)*Math.PI*2;
+      pet.setAttribute('rx',(spec.size*0.62).toFixed(2));
+      pet.setAttribute('ry',(spec.size*0.34).toFixed(2));
+      pet.setAttribute('fill', p%2===0?spec.bloom:spec.accent);
+      pet.setAttribute('opacity','0.75');
+      pet.setAttribute('transform',`rotate(${(ang*180/Math.PI).toFixed(1)}) translate(${(spec.size*0.5).toFixed(2)},0)`);
+      bloom.appendChild(pet);
+    }
+    g.appendChild(bloom);
+    gFlora.appendChild(g);
+    floraItems.push({ stem, leaves, bloom, x, baseY, h, lean, f:0.12+Math.random()*0.2, p:Math.random()*6.28, a:2+Math.random()*3.5 });
+  }
+}
+function updateFlora(time){
+  const t=time/1000;
+  for(const f of floraItems){
+    const sway=Math.sin(t*f.f+f.p)*f.a;
+    const tipX=f.x+f.lean+sway, tipY=f.baseY-f.h;
+    const cx=f.x+(f.lean+sway)*0.35, cy=f.baseY-f.h*0.55;
+    f.stem.setAttribute('d',`M${f.x.toFixed(1)},${f.baseY.toFixed(1)} Q${cx.toFixed(1)},${cy.toFixed(1)} ${tipX.toFixed(1)},${tipY.toFixed(1)}`);
+    for(const lf of f.leaves){
+      const u=lf.at, lx=f.x+(f.lean+sway)*u*0.8, ly=f.baseY-f.h*u;
+      const ex=lx+lf.dir*lf.len, ey=ly-lf.len*0.35+sway*0.3;
+      const cx2=lx+lf.dir*lf.len*0.5, cy2=ly-lf.len*0.75;
+      lf.el.setAttribute('d',`M${lx.toFixed(1)},${ly.toFixed(1)} Q${cx2.toFixed(1)},${cy2.toFixed(1)} ${ex.toFixed(1)},${ey.toFixed(1)}`);
+    }
+    f.bloom.setAttribute('transform',`translate(${tipX.toFixed(1)},${tipY.toFixed(1)}) rotate(${(sway*1.6).toFixed(1)})`);
+  }
+}
+/* buildFlora(); — 画面下部の草花表示は停止中 */
+
+/* ============ 波紋：3〜5重・ほぼ同時発生・タップごとに色が変わる ============ */
+const RIPPLE_PALETTE=['#E5DCC8','#E8C547','#C9722B','#9A6A72','#7C8567','#F2DA8B','#D9AEB8','#B5533C'];
+
+/* 文字自体の波紋：「vibe curator」のどこかをタップすると、
+   その文字を中心に色の波が両隣へ広がって、また元の色へ静かに戻っていく。 */
+const vibeChars=Array.from(document.querySelectorAll('#vibeText .ch'));
+let textRippleIdx=Math.floor(Math.random()*RIPPLE_PALETTE.length);
+function triggerTextRipple(originIdx){
+  textRippleIdx=(textRippleIdx+1)%RIPPLE_PALETTE.length;
+  const color=RIPPLE_PALETTE[textRippleIdx];
+  vibeChars.forEach((el,i)=>{
+    const dist=Math.abs(i-originIdx);
+    const delay=dist*60;
+    setTimeout(()=>{
+      el.style.color=color;
+      setTimeout(()=>{ el.style.color=''; }, 380);
+    }, delay);
+  });
+}
+const vibeTextEl=document.getElementById('vibeText');
+if(vibeTextEl){
+  vibeTextEl.addEventListener('pointerdown',(e)=>{
+    let nearestIdx=0, nearestDist=Infinity;
+    vibeChars.forEach((el,i)=>{
+      const r=el.getBoundingClientRect();
+      const cx=(r.left+r.right)/2;
+      const d=Math.abs(cx-e.clientX);
+      if(d<nearestDist){ nearestDist=d; nearestIdx=i; }
+    });
+    triggerTextRipple(nearestIdx);
+  });
+}
+let rippleColorIdx=Math.floor(Math.random()*RIPPLE_PALETTE.length);
+const ripples=[];
+const MAX_RIPPLE_GROUPS=8;
+function spawnRipple(x,y,opts){
+  opts=opts||{};
+  const reach=Math.hypot(Math.max(x,W-x),Math.max(y,H-y))*1.06;
+  const n=reduced?1:(3+Math.floor(Math.random()*3)); // 3〜5重
+  const g=document.createElementNS(SVGNS,'g');
+  g.setAttribute('transform',`translate(${x.toFixed(1)},${y.toFixed(1)})`);
+  gRipple.appendChild(g);
+  const group={el:g, rings:[], cx:x, cy:y};
+  rippleColorIdx=(rippleColorIdx+1)%RIPPLE_PALETTE.length;
+  const baseColor=RIPPLE_PALETTE[rippleColorIdx];
+  const iri=Math.random()<0.035;
+  // 1タップ内の全リングが共有する速さ(px/ms)。先に生まれたものが常に先を進む。
+  const speed=(opts.fast? reach/2700 : reach/4500) * (0.85+Math.random()*0.3);
+  for(let i=0;i<n;i++){
+    const c=document.createElementNS(SVGNS,'circle');
+    c.setAttribute('class','ring');
+    c.setAttribute('cx',0); c.setAttribute('cy',0); c.setAttribute('r',1);
+    c.setAttribute('stroke', (iri&&i===0)?'#F2DA8B':baseColor);
+    g.appendChild(c);
+    group.rings.push({
+      el:c,
+      delay:i*(70+Math.random()*50),          // 一定間隔で遅れて生まれる(順序が入れ替わらない)
+      speed,                                    // 全リング共通
+      life:1600+Math.random()*1600+i*120,       // 見える長さだけがリングごとに違う
+      o0:0.46-i*0.05+Math.random()*0.05,
+      sw:Math.max(0.22,0.8-i*0.12+Math.random()*0.1),
+      born:performance.now(), done:false,
+      currentRad:null
+    });
+  }
+  ripples.push(group);
+  if(ripples.length>MAX_RIPPLE_GROUPS){ const old=ripples.shift(); old.el.remove(); }
+  playBowlChord();
+}
+function updateRipples(now){
+  for(let i=ripples.length-1;i>=0;i--){
+    const grp=ripples[i];
+    let allDone=true;
+    for(const r of grp.rings){
+      const e=now-r.born-r.delay;
+      if(e<0){ allDone=false; r.el.style.opacity=0; r.currentRad=null; continue; }
+      if(e>=r.life){ if(!r.done){ r.done=true; r.el.style.opacity=0; } r.currentRad=null; continue; }
+      allDone=false;
+      const rad=Math.max(0.001, r.speed*e);     // 一定速度で拡大 = 先発が常に先行
+      r.currentRad=rad;
+      const p=e/r.life;
+      const fade=Math.pow(1-p,1.35);
+      r.el.setAttribute('transform',`scale(${rad.toFixed(3)})`);
+      r.el.style.opacity=(r.o0*fade).toFixed(3);
+      r.el.style.strokeWidth=(r.sw*(0.35+fade*0.65)).toFixed(2);
+    }
+    if(allDone){ grp.el.remove(); ripples.splice(i,1); }
+  }
+}
+
+/* ============ 季節の生き物：夏=蛍／春=花びら／秋=枯葉／冬=雪明かり ============ */
+const ambient=[];
+const MAX_AMBIENT=5;
+/* 紅葉：3種の葉形(紅葉・イチョウ・木の葉)を色とりどりに、大きめに、
+   垂直に落とさず、風に蛇行しながら不規則に回転して舞わせる。 */
+const LEAF_COLORS=['#B5533C','#C9722B','#D68A3A','#9A6A45','#8A3E24','#C94F3A','#E0A030','#A8552E'];
+
+/* 紅葉(モミジ)・イチョウ：座標は実際にPythonでラスタライズして目視で確認した上で
+   決めている(サンドボックス内でmatplotlibにより実描画→確認→調整を数回繰り返した)。
+   先端は直線で正確な位置に到達させ、裂片の間の谷だけを二次ベジェで丸めることで、
+   「柳と同じ技法をそのまま流用して先端まで丸まってしまう」という前回までの失敗を避けている。 */
+const MOMIJI={
+  d:'M-8.0,0.0 Q-5.8,-1.6 -10.8,-6.3 Q-4.6,-4.6 -7.5,-13.0 Q-1.8,-6.8 0.0,-16.5 Q1.8,-6.8 7.5,-13.0 Q4.6,-4.6 10.8,-6.3 Q5.8,-1.6 8.0,0.0 Q10,4.3 0,7 Q-10,4.3 -8.0,0.0 Z',
+  veins:[[0,5,-7.4,0.0],[0,5,-9.9,-5.8],[0,5,-6.9,-12.0],[0,5,0.0,-15.2],[0,5,6.9,-12.0],[0,5,9.9,-5.8],[0,5,7.4,0.0]]
+};
+const ICHOU={
+  d:'M2.2,-14.5 Q2.5,-14.1 5.0,-14.0 Q7.4,-14.0 9.2,-12.0 Q11.1,-10.0 11.4,-7.4 Q11.6,-4.7 10.3,-2.6 Q9.0,-0.6 7.4,0.4 Q5.8,1.5 4.5,1.8 Q3.2,2.0 2.2,1.8 Q1.3,1.5 0.0,1.5 Q-1.3,1.5 -2.2,1.8 Q-3.2,2.0 -4.5,1.8 Q-5.8,1.5 -7.4,0.4 Q-9.0,-0.6 -10.3,-2.6 Q-11.6,-4.7 -11.4,-7.4 Q-11.1,-10.0 -9.2,-12.0 Q-7.4,-14.0 -5.0,-14.0 Q-2.5,-14.1 -2.4,-14.3 L-2.2,-14.5 L0,-8 Z',
+  veins:[[0,1.4,-12.5,1.1],[0,1.4,-10.2,-7.2],[0,1.4,-4.3,-11.7],[0,1.4,4.3,-11.7],[0,1.4,10.2,-7.2],[0,1.4,12.5,1.1]]
+};
+const LEAF_SHAPES={
+  momiji:MOMIJI.d,
+  ichou:ICHOU.d,
+  kinoha:'M0,-13 C7,-9 9,3 0,13 C-9,3 -7,-9 0,-13 Z'
+};
+const LEAF_VEINS={
+  momiji:MOMIJI.veins,
+  ichou:ICHOU.veins,
+  kinoha:[[0,-11,0,11]]
+};
+const LEAF_KINDS=['momiji','ichou','kinoha'];
+
+function spawnAmbientOne(){
+  if(reduced) return;
+  if(ambient.length>=MAX_AMBIENT) return;
+  const season=currentSeason(new Date());
+  const guardTop=H*0.16, guardBottom=H*0.60;
+  const life=9000+Math.random()*2500;
+  let x,y,tries=0;
+
+  if(season==='autumn'){
+    // 紅葉：SVGで葉形を描く(色・種類とも毎回変える)
+    const kind=LEAF_KINDS[Math.floor(Math.random()*LEAF_KINDS.length)];
+    const color=LEAF_COLORS[Math.floor(Math.random()*LEAF_COLORS.length)];
+    x=W*(0.08+Math.random()*0.86); y=-16-Math.random()*30;
+    const size=26+Math.random()*16; // 大きめ
+    const svg=document.createElementNS(SVGNS,'svg');
+    svg.setAttribute('class','ambient');
+    svg.setAttribute('viewBox','-16 -16 32 32');
+    svg.setAttribute('width',size); svg.setAttribute('height',size);
+    svg.style.left=x+'px'; svg.style.top=y+'px'; svg.style.overflow='visible';
+    const path=document.createElementNS(SVGNS,'path');
+    path.setAttribute('d',LEAF_SHAPES[kind]);
+    path.setAttribute('fill',color);
+    svg.appendChild(path);
+    for(const [x1,y1,x2,y2] of LEAF_VEINS[kind]){
+      const vein=document.createElementNS(SVGNS,'line');
+      vein.setAttribute('x1',x1); vein.setAttribute('y1',y1);
+      vein.setAttribute('x2',x2); vein.setAttribute('y2',y2);
+      vein.setAttribute('stroke','#00000028'); vein.setAttribute('stroke-width','0.6');
+      svg.appendChild(vein);
+    }
+    stage.appendChild(svg);
+    ambient.push({
+      el:svg, type:'leaf', baseX:x, x, y, seed:Math.random()*10, born:performance.now(), life:30000,
+      swayAmp1:40+Math.random()*55, swayFreq1:0.32+Math.random()*0.22, swayPhase:Math.random()*6.28,
+      swayAmp2:10+Math.random()*15, swayFreq2:1.05+Math.random()*0.85,
+      fallBase:0.05+Math.random()*0.045,
+      flutterRotAmp:35+Math.random()*55, flutterRotFreq:0.45+Math.random()*0.55,
+      spinBase:(Math.random()-0.5)*24, axisRate:(Math.random()-0.5)*420, axisPhase:Math.random()*360,
+      gA1:30+Math.random()*50, gF1:0.15+Math.random()*0.2, gP1:Math.random()*6.28,
+      gA2:15+Math.random()*30, gF2:0.4+Math.random()*0.35, gP2:Math.random()*6.28,
+      gA3:8+Math.random()*18,  gF3:0.9+Math.random()*0.6,  gP3:Math.random()*6.28
+    });
+    return;
+  }
+
+  const el=document.createElement('span');
+  let type, vx=0, vy=0, vr=0, seed=Math.random()*10;
+
+  if(season==='summer'){
+    type='firefly';
+    do{ x=W*(0.10+Math.random()*0.86); y=H*(0.06+Math.random()*0.88); tries++; }
+    while(tries<20 && y>guardTop && y<guardBottom && x>W*0.06 && x<W*0.94);
+    vx=(Math.random()-0.5)*0.22; vy=(Math.random()-0.5)*0.22;
+  } else if(season==='spring'){
+    type='petal';
+    x=W*(0.08+Math.random()*0.86); y=-10-Math.random()*30;
+    vx=(Math.random()-0.5)*0.10; vy=0.10+Math.random()*0.10; vr=(Math.random()-0.5)*1.6;
+  } else {
+    type='snow';
+    x=W*(0.06+Math.random()*0.9); y=-10-Math.random()*30;
+    vx=0; vy=0.05+Math.random()*0.05; vr=0;
+  }
+
+  el.className='ambient '+type;
+  el.style.left=x+'px'; el.style.top=y+'px';
+  stage.appendChild(el);
+  ambient.push({el, type, x, y, vx, vy, vr, rot:Math.random()*360, seed, born:performance.now(), life});
+}
+function updateAmbient(now){
+  for(let i=ambient.length-1;i>=0;i--){
+    const p=ambient[i];
+    const age=now-p.born;
+    if(age>p.life || p.y>H+30){ p.el.remove(); ambient.splice(i,1); continue; }
+    const fadeIn=Math.min(1,age/1600);
+    const fadeOut=Math.min(1,(p.life-age)/2000);
+
+    if(p.type==='firefly'){
+      p.vx+=(Math.random()-0.5)*0.018; p.vy+=(Math.random()-0.5)*0.018;
+      p.vx=Math.max(-0.35,Math.min(0.35,p.vx)); p.vy=Math.max(-0.35,Math.min(0.35,p.vy));
+      p.x+=p.vx; p.y+=p.vy;
+      const flick=0.72+Math.sin(age/380+p.seed)*0.22;
+      p.el.style.opacity=(0.7*fadeIn*fadeOut*flick).toFixed(3);
+      p.el.style.transform=`translate(${(p.x-parseFloat(p.el.style.left)).toFixed(1)}px,${(p.y-parseFloat(p.el.style.top)).toFixed(1)}px)`;
+    } else if(p.type==='leaf'){
+      const t=age/1000;
+      // 垂直落下ではなく、大小2つのうねりを重ねて蛇行させる
+      const sway = p.swayAmp1*Math.sin(t*p.swayFreq1+p.swayPhase)
+                 + p.swayAmp2*Math.sin(t*p.swayFreq2+p.swayPhase*1.7);
+      const curX = p.baseX + sway;
+      const fallSpeed = p.fallBase*(0.65+0.35*Math.sin(t*0.4+p.swayPhase)); // 落ちる速さもゆらぐ(常に下向き)
+      p.y += fallSpeed*16;
+      // 面内の傾き：緩やかに漂う程度(基本回転)＋速いはためき
+      const rot = p.spinBase*t + p.flutterRotAmp*Math.sin(t*p.flutterRotFreq+p.seed);
+      // 葉自身の軸を中心にした回転：edge-on(幅ゼロ)を挟んで表と裏が入れ替わる
+      // 本当の回転。葉ごとに速さをばらつかせているので、ほぼ回らない葉から
+      // 何回転もする葉まで自然に混ざる
+      // 軸を中心にした回転の"速さ"自体を、周期の違う3つの揺らぎで気まぐれにむらつかせる
+      // (一定速度でくるくる回るのではなく、時おり速まったり、緩んだり、一瞬戻ったりする)
+      const axisAngle=(
+        p.axisRate*t + p.axisPhase
+        + p.gA1*Math.sin(t*p.gF1+p.gP1)
+        + p.gA2*Math.sin(t*p.gF2+p.gP2)
+        + p.gA3*Math.sin(t*p.gF3+p.gP3)
+      )*Math.PI/180;
+      const scaleX = Math.cos(axisAngle);
+      // 消えるのは時間ではなく位置：画面の1/2を過ぎたあたりから徐々に薄くなり、
+      // 下部1/4〜1/5(高さの約78%)に達しきったところで消える(突然消えない)
+      const fadeStartY = H*0.5;
+      const fadeEndY   = H*0.78;
+      let posFade = 1;
+      if(p.y > fadeStartY){
+        posFade = Math.max(0, 1-(p.y-fadeStartY)/(fadeEndY-fadeStartY));
+      }
+      if(p.y >= fadeEndY || posFade<=0){ p.el.remove(); ambient.splice(i,1); continue; }
+      p.el.style.opacity=(0.72*fadeIn*posFade).toFixed(3);
+      p.el.style.transform=
+        `translate(${(curX-p.baseX).toFixed(1)}px,${(p.y-parseFloat(p.el.style.top)).toFixed(1)}px) `+
+        `rotate(${rot.toFixed(1)}deg) scale(${scaleX.toFixed(2)},1)`;
+    } else if(p.type==='petal'){
+      p.vy += 0.00028;
+      p.x += p.vx + Math.sin(age/520+p.seed)*0.13;
+      p.y += p.vy*16;
+      p.rot += p.vr;
+      p.el.style.opacity=(0.55*fadeIn*fadeOut).toFixed(3);
+      p.el.style.transform=`translate(${(p.x-parseFloat(p.el.style.left)).toFixed(1)}px,${(p.y-parseFloat(p.el.style.top)).toFixed(1)}px) rotate(${p.rot.toFixed(1)}deg)`;
+    } else { // snow
+      p.y += p.vy*16;
+      const dx=Math.sin(age/900+p.seed)*8;
+      const twinkle=0.5+Math.sin(age/650+p.seed*3)*0.3;
+      p.el.style.opacity=(0.55*fadeIn*fadeOut*twinkle).toFixed(3);
+      p.el.style.transform=`translate(${dx.toFixed(1)}px,${(p.y-parseFloat(p.el.style.top)).toFixed(1)}px)`;
+    }
+  }
+}
+setTimeout(function cycle(){
+  spawnAmbientOne();
+  setTimeout(cycle, 1800+Math.random()*4200);
+}, 5000);
+
+/* ============ 軌跡の生き物：長く触れて描いた経路を、季節の生き物がゆったりなぞって飛ぶ ============ */
+const gCreature=document.createElementNS(SVGNS,'g');
+canvas.appendChild(gCreature);
+const PATH_ONSET=180; // ms — これより短い接触は生き物を呼ばない
+let pathPts=[], pathArmed=false, pathStartT=0;
+
+const CREATURE_SPEC={
+  summer:{ kind:'butterfly', duration:4200, bobAmp:11, bobFreq:2.0, flapFreq:6.5, size:11 },
+  autumn:{ kind:'dragonfly', duration:7800, bobAmp:3.5, bobFreq:3.0, flapFreq:24,  size:12 },
+  spring:{ kind:'swallow',   duration:3000, bobAmp:15, bobFreq:1.5, flapFreq:4.0, size:12 },
+  winter:{ kind:'bird',      duration:3600, bobAmp:7,  bobFreq:1.7, flapFreq:5.0, size:8  }
+};
+/* 生成のたびに配色が変わる：種ごとに複数の配色パターンを用意し、毎回そこから選ぶ */
+const CREATURE_PALETTES={
+  butterfly:[
+    {color:'#EAD9C9',accent:'#C79AA6',spot:'#8E6A78',body:'#2E2A22'},
+    {color:'#E3C9DA',accent:'#8E7BA8',spot:'#5E4E74',body:'#332B3A'},
+    {color:'#F2E6A8',accent:'#C9722B',spot:'#8A4E1E',body:'#3A2E18'},
+    {color:'#CFE0D6',accent:'#5F7355',spot:'#3E5238',body:'#22301F'},
+    {color:'#F0D8C0',accent:'#B5533C',spot:'#7A3624',body:'#3A2418'},
+    {color:'#DCE3EE',accent:'#3358D6',spot:'#22377A',body:'#242A3A'}
+  ],
+  dragonfly:[
+    {color:'#C9722B',accent:'#8A5A3E'},
+    {color:'#3A5A73',accent:'#2F4858'},
+    {color:'#8E9A6E',accent:'#5F7355'},
+    {color:'#9A6A72',accent:'#6E4A32'}
+  ],
+  swallow:[
+    {color:'#3A362F',accent:'#E5DCC8'},
+    {color:'#2F4858',accent:'#C9722B'},
+    {color:'#332B3A',accent:'#D9AEB8'}
+  ],
+  bird:[
+    {color:'#D9D2C0',accent:'#B4B0A2'},
+    {color:'#C4C0B2',accent:'#8B8F86'},
+    {color:'#EFE7D6',accent:'#D9AEB8'}
+  ]
+};
+const creatures=[];
+const glints=[];
+const MAX_GLINTS=40;
+function spawnGlint(x,y,color){
+  const el=document.createElement('span');
+  el.className='glint';
+  el.style.left=x+'px'; el.style.top=y+'px';
+  el.style.background=color||'#E5DCC8';
+  el.style.boxShadow=`0 0 5px 1px ${color||'#E5DCC8'}`;
+  fxLayer.appendChild(el);
+  glints.push(el);
+  if(glints.length>MAX_GLINTS){ const old=glints.shift(); old.remove(); }
+  el.addEventListener('animationend', ()=>{ el.remove(); const idx=glints.indexOf(el); if(idx>=0) glints.splice(idx,1); });
+}
+
+function buildCreatureShape(spec){
+  const g=document.createElementNS(SVGNS,'g');
+  const s=spec.size;
+  let wingL,wingR,body;
+  if(spec.kind==='butterfly'){
+    // 前翅(大きく先の尖った上翅)と後翅(丸みのある下翅)を別々に描き、翅脈と紋を添える
+    const makeWingPair=(mirror)=>{
+      const m=mirror?-1:1;
+      const wg=document.createElementNS(SVGNS,'g');
+      const fw=document.createElementNS(SVGNS,'path'); // 前翅
+      fw.setAttribute('d',
+        `M0,${(-s*0.22).toFixed(2)} `+
+        `C ${(m*s*0.55).toFixed(2)},${(-s*1.05).toFixed(2)} ${(m*s*1.55).toFixed(2)},${(-s*0.75).toFixed(2)} ${(m*s*1.5).toFixed(2)},${(-s*0.05).toFixed(2)} `+
+        `C ${(m*s*1.4).toFixed(2)},${(s*0.35).toFixed(2)} ${(m*s*0.7).toFixed(2)},${(s*0.32).toFixed(2)} 0,${(-s*0.02).toFixed(2)} Z`);
+      fw.setAttribute('fill',spec.color); fw.setAttribute('opacity','0.88');
+      const hw=document.createElementNS(SVGNS,'path'); // 後翅
+      hw.setAttribute('d',
+        `M0,${(-s*0.02).toFixed(2)} `+
+        `C ${(m*s*0.55).toFixed(2)},${(s*0.05).toFixed(2)} ${(m*s*1.0).toFixed(2)},${(s*0.55).toFixed(2)} ${(m*s*0.65).toFixed(2)},${(s*1.05).toFixed(2)} `+
+        `C ${(m*s*0.4).toFixed(2)},${(s*1.35).toFixed(2)} 0,${(s*0.75).toFixed(2)} 0,${(s*0.32).toFixed(2)} Z`);
+      hw.setAttribute('fill',spec.accent); hw.setAttribute('opacity','0.85');
+      const vein=document.createElementNS(SVGNS,'path'); // 翅脈(一本だけ、繊細さのため)
+      vein.setAttribute('d',`M0,${(-s*0.15).toFixed(2)} Q ${(m*s*0.75).toFixed(2)},${(-s*0.5).toFixed(2)} ${(m*s*1.15).toFixed(2)},${(-s*0.15).toFixed(2)}`);
+      vein.setAttribute('fill','none'); vein.setAttribute('stroke',spec.body); vein.setAttribute('stroke-width','0.35'); vein.setAttribute('opacity','0.4');
+      const spot=document.createElementNS(SVGNS,'circle'); // 紋
+      spot.setAttribute('cx',(m*s*0.85).toFixed(2)); spot.setAttribute('cy',(-s*0.28).toFixed(2));
+      spot.setAttribute('r',(s*0.14).toFixed(2)); spot.setAttribute('fill',spec.spot); spot.setAttribute('opacity','0.65');
+      wg.append(fw,hw,vein,spot);
+      return wg;
+    };
+    wingR=makeWingPair(false);
+    wingL=makeWingPair(true);
+    body=document.createElementNS(SVGNS,'g');
+    const torso=document.createElementNS(SVGNS,'path');
+    torso.setAttribute('d',`M0,${(-s*0.32).toFixed(2)} Q${(s*0.09).toFixed(2)},0 0,${(s*0.55).toFixed(2)} Q${(-s*0.09).toFixed(2)},0 0,${(-s*0.32).toFixed(2)}`);
+    torso.setAttribute('fill',spec.body); torso.setAttribute('opacity','0.9');
+    const head=document.createElementNS(SVGNS,'circle');
+    head.setAttribute('cx',0); head.setAttribute('cy',(-s*0.42).toFixed(2)); head.setAttribute('r',(s*0.13).toFixed(2));
+    head.setAttribute('fill',spec.body);
+    const antL=document.createElementNS(SVGNS,'path');
+    antL.setAttribute('d',`M0,${(-s*0.5).toFixed(2)} Q${(-s*0.32).toFixed(2)},${(-s*0.85).toFixed(2)} ${(-s*0.42).toFixed(2)},${(-s*1.02).toFixed(2)}`);
+    antL.setAttribute('fill','none'); antL.setAttribute('stroke',spec.body); antL.setAttribute('stroke-width','0.5'); antL.setAttribute('stroke-linecap','round');
+    const antR=antL.cloneNode();
+    antR.setAttribute('d',`M0,${(-s*0.5).toFixed(2)} Q${(s*0.32).toFixed(2)},${(-s*0.85).toFixed(2)} ${(s*0.42).toFixed(2)},${(-s*1.02).toFixed(2)}`);
+    body.append(torso,head,antL,antR);
+    g.append(wingL,wingR,body);
+  } else if(spec.kind==='dragonfly'){
+    const bodyG=document.createElementNS(SVGNS,'g');
+    // 腹部：先端にかけてわずかに細くなる、節のある長い体
+    const abdomen=document.createElementNS(SVGNS,'path');
+    abdomen.setAttribute('d',
+      `M0,${(-s*0.15).toFixed(2)} `+
+      `C${(s*0.13).toFixed(2)},${(s*0.3).toFixed(2)} ${(s*0.1).toFixed(2)},${(s*1.6).toFixed(2)} 0,${(s*2.05).toFixed(2)} `+
+      `C${(-s*0.1).toFixed(2)},${(s*1.6).toFixed(2)} ${(-s*0.13).toFixed(2)},${(s*0.3).toFixed(2)} 0,${(-s*0.15).toFixed(2)} Z`);
+    abdomen.setAttribute('fill',spec.color); abdomen.setAttribute('opacity','0.88');
+    bodyG.appendChild(abdomen);
+    for(let seg=1; seg<=5; seg++){
+      const yy=-s*0.05 + seg*(s*2.0/6);
+      const w=(0.11-seg*0.012)*s;
+      const ln=document.createElementNS(SVGNS,'line');
+      ln.setAttribute('x1',(-w).toFixed(2)); ln.setAttribute('y1',yy.toFixed(2));
+      ln.setAttribute('x2',w.toFixed(2)); ln.setAttribute('y2',yy.toFixed(2));
+      ln.setAttribute('stroke',spec.accent); ln.setAttribute('stroke-width','0.3'); ln.setAttribute('opacity','0.5');
+      bodyG.appendChild(ln);
+    }
+    const thorax=document.createElementNS(SVGNS,'ellipse');
+    thorax.setAttribute('cx',0); thorax.setAttribute('cy',(-s*0.42).toFixed(2));
+    thorax.setAttribute('rx',(s*0.24).toFixed(2)); thorax.setAttribute('ry',(s*0.32).toFixed(2));
+    thorax.setAttribute('fill',spec.color); thorax.setAttribute('opacity','0.9');
+    bodyG.appendChild(thorax);
+    const head=document.createElementNS(SVGNS,'circle');
+    head.setAttribute('cx',0); head.setAttribute('cy',(-s*0.78).toFixed(2)); head.setAttribute('r',(s*0.14).toFixed(2));
+    head.setAttribute('fill',spec.color);
+    bodyG.appendChild(head);
+    const eyeL=document.createElementNS(SVGNS,'circle');
+    eyeL.setAttribute('cx',(-s*0.13).toFixed(2)); eyeL.setAttribute('cy',(-s*0.82).toFixed(2)); eyeL.setAttribute('r',(s*0.11).toFixed(2));
+    eyeL.setAttribute('fill',spec.accent); eyeL.setAttribute('opacity','0.85');
+    const eyeR=eyeL.cloneNode(); eyeR.setAttribute('cx',(s*0.13).toFixed(2));
+    bodyG.append(eyeL,eyeR);
+    body=bodyG;
+
+    // 翅：細部は作り込まず、もっと象徴的な一枚の葉形(横に真っ直ぐ伸びる)で表す
+    const makeWing=(mirror,isHind)=>{
+      const m=mirror?-1:1;
+      const len=isHind? s*1.35 : s*1.6;
+      const w=isHind? s*0.3 : s*0.22;
+      const wg=document.createElementNS(SVGNS,'g');
+      const wing=document.createElementNS(SVGNS,'path');
+      wing.setAttribute('d',
+        `M0,0 Q${(m*len*0.5).toFixed(2)},${(-w).toFixed(2)} ${(m*len).toFixed(2)},0 `+
+        `Q${(m*len*0.5).toFixed(2)},${(w*0.55).toFixed(2)} 0,0 Z`);
+      wing.setAttribute('fill',spec.accent); wing.setAttribute('opacity','0.3');
+      wing.setAttribute('stroke',spec.accent); wing.setAttribute('stroke-width','0.4'); wing.setAttribute('stroke-opacity','0.65');
+      wg.appendChild(wing);
+      return wg;
+    };
+    const foreY=-s*0.50, hindY=-s*0.26;
+    const wingFL=makeWing(true,false), wingFR=makeWing(false,false);
+    const wingHL=makeWing(true,true),  wingHR=makeWing(false,true);
+    wingFL.setAttribute('transform',`translate(0,${foreY})`);
+    wingFR.setAttribute('transform',`translate(0,${foreY})`);
+    wingHL.setAttribute('transform',`translate(0,${hindY})`);
+    wingHR.setAttribute('transform',`translate(0,${hindY})`);
+    g.append(wingHL,wingHR,wingFL,wingFR,body);
+    wingL=wingFL; wingR=wingFR;
+    var dfWingHL=wingHL, dfWingHR=wingHR, dfForeY=foreY, dfHindY=hindY;
+  } else if(spec.kind==='swallow'){
+    wingL=document.createElementNS(SVGNS,'path');
+    wingL.setAttribute('d',`M0,0 Q${-s*1.2},${-s*0.15} ${-s*1.7},${s*0.55}`);
+    wingL.setAttribute('fill','none'); wingL.setAttribute('stroke',spec.color); wingL.setAttribute('stroke-width','1.3'); wingL.setAttribute('stroke-linecap','round');
+    wingR=document.createElementNS(SVGNS,'path');
+    wingR.setAttribute('d',`M0,0 Q${s*1.2},${-s*0.15} ${s*1.7},${s*0.55}`);
+    wingR.setAttribute('fill','none'); wingR.setAttribute('stroke',spec.color); wingR.setAttribute('stroke-width','1.3'); wingR.setAttribute('stroke-linecap','round');
+    body=document.createElementNS(SVGNS,'path');
+    body.setAttribute('d',`M0,0 L0,${s*0.9} M0,${s*0.9} L${-s*0.4},${s*1.4} M0,${s*0.9} L${s*0.4},${s*1.4}`);
+    body.setAttribute('fill','none'); body.setAttribute('stroke',spec.color); body.setAttribute('stroke-width','1');
+    g.append(wingL,wingR,body);
+  } else { // bird (冬)
+    body=document.createElementNS(SVGNS,'ellipse');
+    body.setAttribute('rx',s*0.62); body.setAttribute('ry',s*0.46);
+    body.setAttribute('fill',spec.color); body.setAttribute('opacity','0.8');
+    wingL=document.createElementNS(SVGNS,'ellipse');
+    wingL.setAttribute('rx',s*0.55); wingL.setAttribute('ry',s*0.26);
+    wingL.setAttribute('cx',-s*0.5); wingL.setAttribute('cy',0);
+    wingL.setAttribute('fill',spec.accent); wingL.setAttribute('opacity','0.8');
+    wingR=wingL.cloneNode(); wingR.setAttribute('cx',s*0.5);
+    g.append(body,wingL,wingR);
+  }
+  if(spec.kind==='dragonfly'){
+    return {g, wingL, wingR, wingHL:dfWingHL, wingHR:dfWingHR, foreY:dfForeY, hindY:dfHindY};
+  }
+  return {g, wingL, wingR};
+}
+
+/* 人の指の動きは多少カクカクしがちなので、記録した軌跡を「角を切り落とす」
+   Chaikinのアルゴリズムで数回丸めてから使う。始点・終点はそのまま保つ。
+   これでどんな飛び方の生き物(トンボの鋭い方向転換も含む)も、実際になぞる
+   経路そのものが滑らかになる。 */
+function chaikinSmooth(pts, iterations){
+  let cur=pts;
+  for(let it=0; it<iterations; it++){
+    const next=[cur[0]];
+    for(let i=0;i<cur.length-1;i++){
+      const p0=cur[i], p1=cur[i+1];
+      next.push({x:0.75*p0.x+0.25*p1.x, y:0.75*p0.y+0.25*p1.y});
+      next.push({x:0.25*p0.x+0.75*p1.x, y:0.25*p0.y+0.75*p1.y});
+    }
+    next.push(cur[cur.length-1]);
+    cur=next;
+  }
+  return cur;
+}
+function spawnPathCreature(points){
+  if(points.length<3) return;
+  const smoothed=chaikinSmooth(points, 3);
+  const baseSpec=CREATURE_SPEC[currentSeason(new Date())];
+  const palette=CREATURE_PALETTES[baseSpec.kind];
+  const chosen=palette[Math.floor(Math.random()*palette.length)];
+  const spec=Object.assign({}, baseSpec, chosen);   // 種の挙動はそのまま、配色だけ毎回選び直す
+  const shape=buildCreatureShape(spec);
+  gCreature.appendChild(shape.g);
+  // 記録した経路の長さから、経過時間割合で位置を求められるようにしておく
+  let total=0;
+  const segs=[];
+  for(let i=1;i<smoothed.length;i++){
+    const d=Math.hypot(smoothed[i].x-smoothed[i-1].x, smoothed[i].y-smoothed[i-1].y);
+    segs.push(d); total+=d;
+  }
+  creatures.push({
+    spec, shape, points:smoothed, segs, total,
+    born:performance.now(), phase:'trace',
+    wanderT:0, wx:smoothed[smoothed.length-1].x, wy:smoothed[smoothed.length-1].y,
+    heading:0
+  });
+  if(creatures.length>4){ const old=creatures.shift(); old.shape.g.remove(); }
+}
+
+function pointAtFraction(c, frac){
+  const target=frac*c.total;
+  let acc=0;
+  for(let i=0;i<c.segs.length;i++){
+    if(acc+c.segs[i]>=target || i===c.segs.length-1){
+      const segFrac = c.segs[i]>0 ? (target-acc)/c.segs[i] : 0;
+      const p0=c.points[i], p1=c.points[i+1];
+      return {
+        x: p0.x+(p1.x-p0.x)*Math.min(1,Math.max(0,segFrac)),
+        y: p0.y+(p1.y-p0.y)*Math.min(1,Math.max(0,segFrac)),
+        heading: Math.atan2(p1.y-p0.y, p1.x-p0.x)
+      };
+    }
+    acc+=c.segs[i];
+  }
+  const last=c.points[c.points.length-1];
+  return {x:last.x, y:last.y, heading:c.heading};
+}
+
+function updatePathCreatures(now){
+  for(let i=creatures.length-1;i>=0;i--){
+    const c=creatures[i];
+    const age=now-c.born;
+    const flap=Math.abs(Math.sin(age/1000*c.spec.flapFreq));
+    const flapScale=0.35+flap*0.9;
+    let x,y,heading,opacity=1;
+
+    if(c.phase==='trace'){
+      const raw=Math.min(1, age/c.spec.duration);
+      // トンボだけ、なぞる速さに緩急をつけて(ease-in-out)ゆったり見せる
+      const p = c.spec.kind==='dragonfly' ? (1-Math.cos(raw*Math.PI))/2 : raw;
+      const pt=pointAtFraction(c, p);
+      x=pt.x; y=pt.y; heading=pt.heading; c.heading=heading;
+      if(raw>=1){ c.phase='wander'; c.wanderStart=now; c.wx=x; c.wy=y; }
+    } else {
+      if(c.spec.kind==='dragonfly'){
+        // ダーツのような飛び方は残しつつ、間隔を空け・方向転換を小さく・
+        // 向きの変化も瞬時に切り替えず滑らかに補間して、ゆったり穏やかにする
+        if(!c.dartUntil || now>c.dartUntil){
+          c.dartTarget=(c.dartTarget!=null?c.dartTarget:(c.heading||0)) + (Math.random()-0.5)*0.9;
+          c.dartUntil=now + 900 + Math.random()*900;
+          c.dartSpeed=(0.5 + Math.random()*0.4)/3;
+        }
+        if(c.heading==null) c.heading=c.dartTarget||0;
+        c.heading += (c.dartTarget-c.heading)*0.045;
+        heading=c.heading;
+        c.wx += Math.cos(heading)*c.dartSpeed;
+        c.wy += Math.sin(heading)*c.dartSpeed;
+      } else {
+        const wt=(now-c.wanderStart)/1000;
+        heading=c.heading + Math.sin(wt*0.6)*0.5;
+        c.wx += Math.cos(heading)*0.55;
+        c.wy += Math.sin(heading)*0.55;
+      }
+      x=c.wx; y=c.wy;
+      const wanderAge=now-c.wanderStart;
+      opacity = Math.max(0, 1-wanderAge/2200);
+      if(opacity<=0){ c.shape.g.remove(); creatures.splice(i,1); continue; }
+    }
+
+    const bob=Math.sin(age/1000*c.spec.bobFreq*Math.PI*2)*c.spec.bobAmp*0.02;
+    // 頭(触角)は既定でローカル座標の上(-Y)を向いて描かれているため、
+    // 進行方向(headingは+X=0度基準)に合わせるには+90度する。これが無いと
+    // 例えば左へ飛ぶ時に頭が下を向く＝逆さに見えるバグになっていた。
+    const deg=heading*180/Math.PI + 90;
+
+    c.shape.g.setAttribute('transform',
+      `translate(${x.toFixed(1)},${(y+bob*10).toFixed(1)}) rotate(${deg.toFixed(1)})`);
+    c.shape.g.style.opacity=opacity.toFixed(2);
+
+    if(c.spec.kind==='butterfly' || c.spec.kind==='bird'){
+      c.shape.wingL.setAttribute('transform', `scale(${flapScale.toFixed(2)},1)`);
+      c.shape.wingR.setAttribute('transform', `scale(${flapScale.toFixed(2)},1)`);
+    } else if(c.spec.kind==='dragonfly'){
+      // 前翅と後翅を少し位相をずらして羽ばたかせる(本物のトンボの飛び方の特徴)
+      const t=age/1000;
+      const foreBeat=Math.sin(t*c.spec.flapFreq*2*Math.PI)*0.55+1;
+      const hindBeat=Math.sin(t*c.spec.flapFreq*2*Math.PI + 1.15)*0.6+1;
+      c.shape.wingL.setAttribute('transform', `translate(0,${c.shape.foreY}) scale(1,${foreBeat.toFixed(2)})`);
+      c.shape.wingR.setAttribute('transform', `translate(0,${c.shape.foreY}) scale(1,${foreBeat.toFixed(2)})`);
+      c.shape.wingHL.setAttribute('transform', `translate(0,${c.shape.hindY}) scale(1,${hindBeat.toFixed(2)})`);
+      c.shape.wingHR.setAttribute('transform', `translate(0,${c.shape.hindY}) scale(1,${hindBeat.toFixed(2)})`);
+    } else if(c.spec.kind==='swallow'){
+      const sweep=Math.sin(age/1000*c.spec.flapFreq*Math.PI*2)*18;
+      c.shape.wingL.setAttribute('transform', `rotate(${sweep.toFixed(1)})`);
+      c.shape.wingR.setAttribute('transform', `rotate(${-sweep.toFixed(1)})`);
+    }
+
+    // 飛んだ跡にきらめきを残す(触れた跡ではなく、飛行そのものの軌跡)
+    if(!c.lastGlintT || now-c.lastGlintT>85){
+      c.lastGlintT=now;
+      spawnGlint(x, y+bob*10, Math.random()<0.55 ? (c.spec.color||'#E5DCC8') : (c.spec.accent||c.spec.color||'#E5DCC8'));
+    }
+
+    // 柳や、広がっている波紋の輪に触れたら、柳も反応する
+    if(!reduced){
+      const cy=y+bob*10;
+      touchWillow(x, cy, 7);
+      for(const grp of ripples){
+        for(const r of grp.rings){
+          if(r.currentRad==null) continue;
+          const d=Math.hypot(x-grp.cx, cy-grp.cy);
+          if(Math.abs(d-r.currentRad)<9){ touchWillow(x, cy, 9); break; }
+        }
+      }
+    }
+  }
+}
+
+/* ============ 入力 ============ */
+let dragging=false,startX=0,startY=0,lastX=0,lastY=0,lastT=0,permissionAsked=false;
+let lastTapT=0,lastTapX=0,lastTapY=0;
+let tapCandidate=false, tapX=0, tapY=0;
+
+function spawnDrop(x){
+  const sy=H*0.35, ey=H-40;
+  const drop=document.createElement('span'); drop.className='drop';
+  drop.style.left=x+'px'; drop.style.top=sy+'px';
+  drop.style.setProperty('--fall',(ey-sy)+'px'); drop.style.animationDuration='1860ms';
+  fxLayer.appendChild(drop);
+  drop.addEventListener('animationend',()=>{ drop.remove(); spawnRipple(x,ey,{fast:true}); });
+}
+function maybeDoubleTap(x,y){
+  const now=performance.now();
+  if(now-lastTapT<320 && Math.hypot(x-lastTapX,y-lastTapY)<30){ spawnDrop(x); lastTapT=0; return true; }
+  lastTapT=now; lastTapX=x; lastTapY=y; return false;
+}
+
+stage.addEventListener('pointerdown',(e)=>{
+  ensureAudio();
+  dragging=true; startX=lastX=e.clientX; startY=lastY=e.clientY; lastT=performance.now();
+  try{ stage.setPointerCapture(e.pointerId); }catch(_){}
+  const wasDouble=maybeDoubleTap(e.clientX,e.clientY);
+  tapCandidate=!wasDouble; tapX=e.clientX; tapY=e.clientY;
+  pathStartT=lastT; pathArmed=false; pathPts=[{x:e.clientX,y:e.clientY,t:lastT}];
+  requestTiltPermissionOnce();
+});
+stage.addEventListener('pointermove',(e)=>{
+  const now=performance.now();
+  const dt=Math.max(1,now-lastT);
+  const vx=(e.clientX-lastX)/dt;
+  if(!reduced) touchWillow(e.clientX,e.clientY, Math.min(20,4+Math.abs(vx)*12)*(vx>=0?1:-1), now);
+  if(dragging){
+    if(tapCandidate && Math.hypot(e.clientX-tapX,e.clientY-tapY)>8){
+      tapCandidate=false;                 // ドラッグに転じたので、後でタップの波紋は出さない
+    }
+    if(!pathArmed && now-pathStartT>PATH_ONSET) pathArmed=true;
+    if(pathArmed && Math.hypot(e.clientX-lastX,e.clientY-lastY)>2){
+      pathPts.push({x:e.clientX,y:e.clientY,t:now});
+    }
+    const dy=e.clientY-startY;
+    if(Math.abs(dy)>6 && Math.abs(dy)>Math.abs(e.clientX-startX) && !reduced){
+      stage.classList.add('haze');
+      clearTimeout(stage._hazeT);
+      stage._hazeT=setTimeout(()=>stage.classList.remove('haze'),900);
+    }
+  }
+  lastX=e.clientX; lastY=e.clientY; lastT=now;
+});
+['pointerup','pointercancel','pointerleave'].forEach(ev=>{
+  stage.addEventListener(ev,()=>{
+    if(!dragging) return;
+    dragging=false;
+    if(tapCandidate) spawnRipple(tapX,tapY);   // 純粋なタップだった時だけ波紋を生成
+    tapCandidate=false;
+    if(pathArmed) spawnPathCreature(pathPts);
+    pathPts=[]; pathArmed=false;
+  });
+});
+stage.addEventListener('keydown',(e)=>{
+  if(e.key==='Enter'||e.key===' ') spawnRipple(W/2,H/2);
+  else if(e.key==='ArrowRight') touchWillow(W*0.1,H*0.5,22);
+  else if(e.key==='ArrowLeft')  touchWillow(W*0.1,H*0.5,-22);
+});
+
+
+/* ============ 傾き ============ */
+function applyTilt(beta,gamma){
+  stage.style.setProperty('--tilt-x',Math.max(-1,Math.min(1,beta/45)).toFixed(3));
+  stage.style.setProperty('--tilt-y',Math.max(-1,Math.min(1,gamma/45)).toFixed(3));
+  const g=Math.abs(gamma);
+  wordmark.classList.toggle('tilt-iri', g>25&&g<35&&!reduced);
+}
+function onOrientation(e){ if(reduced||e.beta==null||e.gamma==null) return; applyTilt(e.beta-45,e.gamma); }
+function onMotion(e){
+  const a=e.accelerationIncludingGravity; if(!a) return;
+  const mag=Math.sqrt((a.x||0)**2+(a.y||0)**2+(a.z||0)**2);
+  if(mag>28){
+    const t=document.createElement('div'); t.className='thunder'; stage.appendChild(t);
+    setTimeout(()=>{ for(const s of strands) s.events.push({origin:Math.floor(SEGS*0.15),t0:performance.now()/1000,strength:(Math.random()*16+14)}); },160);
+    t.addEventListener('animationend',()=>t.remove());
+  }
+}
+function requestTiltPermissionOnce(){
+  if(permissionAsked) return; permissionAsked=true;
+  const DOE=window.DeviceOrientationEvent, DME=window.DeviceMotionEvent;
+  if(DOE&&typeof DOE.requestPermission==='function'){
+    DOE.requestPermission().then(s=>{ if(s==='granted') window.addEventListener('deviceorientation',onOrientation); }).catch(()=>{});
+  } else if(DOE){ window.addEventListener('deviceorientation',onOrientation); }
+  if(DME&&typeof DME.requestPermission==='function'){
+    DME.requestPermission().then(s=>{ if(s==='granted') window.addEventListener('devicemotion',onMotion); }).catch(()=>{});
+  } else if(DME){ window.addEventListener('devicemotion',onMotion); }
+}
+if(!('ontouchstart' in window)){
+  window.addEventListener('pointermove',(e)=>{
+    if(reduced) return;
+    applyTilt(((e.clientY-H/2)/(H/2))*20, ((e.clientX-W/2)/(W/2))*20);
+  });
+}
+
+/* ============ 静寂 ============ */
+let stillTimer=null;
+function armIdle(){
+  clearTimeout(stillTimer);
+  stage.classList.remove('still');
+  stillTimer=setTimeout(()=>stage.classList.add('still'),60000);
+}
+['pointerdown','pointermove','keydown'].forEach(ev=>window.addEventListener(ev,armIdle,{passive:true}));
+armIdle();
+
+/* ============ 時刻の地 ============ */
+function updateTimeOfDay(){
+  const now=new Date(), h=now.getHours()+now.getMinutes()/60;
+  const anchors=[
+    {h:3,el:document.getElementById('tod-night')},
+    {h:9,el:document.getElementById('tod-dawn')},
+    {h:14,el:document.getElementById('tod-day')},
+    {h:20,el:document.getElementById('tod-dusk')}
+  ];
+  const w=anchors.map(a=>{ let d=Math.abs(h-a.h); d=Math.min(d,24-d); return Math.max(0,1-d/6); });
+  const sum=w.reduce((a,b)=>a+b,0)||1;
+  anchors.forEach((a,i)=>a.el.style.opacity=(w[i]/sum).toFixed(3));
+}
+updateTimeOfDay();
+setInterval(updateTimeOfDay, 5*60*1000);
+
+/* ============ 月：満ち欠けと軌道 ============ */
+/* 正しい端末曲線：光っている領域を「円板の半分の縁」と「端末楕円弧」で閉じたパスとして
+   直接プロットする。新月=面積ゼロ、半月=まっすぐな縦線、満月=円板いっぱい、を検証済み。
+   位相の起点は新月：ap=0(画面左辺)で新月として昇り始め、ap=0.5(中央上部)で満月、
+   ap=1(画面右辺)で再び新月に沈む。昇る前半は上弦側、沈む後半は下弦側として
+   欠け際の向きを左右反転させる。朧月に寄せて輪郭はぼかしフィルターで滲ませてある。 */
+const MOON_PERIOD=120;
+const MOON_R=22;
+const MOON_N=28;
+const MOON_LEFT_VW=8, MOON_RIGHT_VW=92;   // 軌道の左端・右端
+const MOON_BASE_VH=30, MOON_ARC_VH=21;    // 軌道の高さ(画面上3分の1に収める：端30vh〜頂点9vh)
+function updateMoon(nowMs){
+  const ap=(nowMs/1000 % MOON_PERIOD)/MOON_PERIOD;   // 0=左辺(新月) 0.5=中央上部(満月) 1=右辺(新月)
+  const k=(1-Math.cos(2*Math.PI*ap))/2;              // 0=新月 1=満月
+  const beta=Math.PI*k;
+  const signedRx=MOON_R*Math.cos(beta);               // +R(新月)→0(半月)→-R(満月)
+  const waxing = ap < 0.5;                            // 昇る前半＝上弦側
+  const dir = waxing ? 1 : -1;                        // 下弦側(沈む後半)は左右反転
+
+  let edge=[], term=[];
+  for(let i=0;i<=MOON_N;i++){
+    const phi=-Math.PI/2 + Math.PI*(i/MOON_N);
+    const y=MOON_R*Math.sin(phi);
+    edge.push([dir*MOON_R*Math.cos(phi), y]);
+    term.push([dir*signedRx*Math.cos(phi), y]);
+  }
+  let d=`M${edge[0][0].toFixed(2)},${edge[0][1].toFixed(2)} `;
+  for(let i=1;i<=MOON_N;i++) d+=`L${edge[i][0].toFixed(2)},${edge[i][1].toFixed(2)} `;
+  for(let i=MOON_N;i>=0;i--) d+=`L${term[i][0].toFixed(2)},${term[i][1].toFixed(2)} `;
+  d+='Z';
+  moonLit.setAttribute('d', d);
+
+  // 軌道：左辺から弧を描いて昇り、中央上部を頂点に、右辺へ沈んでいく
+  const xVw=MOON_LEFT_VW + ap*(MOON_RIGHT_VW-MOON_LEFT_VW);
+  const yVh=MOON_BASE_VH - MOON_ARC_VH*Math.sin(Math.PI*ap);
+  moonSvg.style.left=xVw.toFixed(2)+'vw';
+  moonSvg.style.top=yVh.toFixed(2)+'vh';
+}
+
+/* ============ 単一ループ ============ */
+/* どこか一箇所でエラーが起きても、月を含む他の演出まで巻き添えで
+   静止してしまわないよう、各更新を個別に保護しておく。 */
+function safe(fn, now){
+  try{ fn(now); }catch(err){ console.error(err); }
+}
+function frame(now){
+  if(!reduced){
+    safe(updateWillow, now);
+    safe(updateFlora, now);
+    safe(updateWordBreath, now);
+  }
+  safe(updateRipples, now);
+  safe(updateAmbient, now);
+  if(!reduced) safe(updatePathCreatures, now);
+  safe(updateMoon, now);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+let resizeT=null;
+window.addEventListener('resize',()=>{
+  clearTimeout(resizeT);
+  resizeT=setTimeout(()=>{ sizeCanvas(); buildWillow(); buildZodiac(); },200);   // buildFlora()は呼ばない(草花表示は停止中)
+});
+})();
+</script>
+</body>
+</html>
